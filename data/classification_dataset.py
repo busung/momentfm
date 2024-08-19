@@ -23,6 +23,7 @@ class ClassificationDataset:
         self.train_file_path_and_name = f"{self.train_file_path}.ts"
         self.test_file_path_and_name = f"{self.test_file_path}.ts"
         self.data_split = data_split  # 'train' or 'test'
+        self.cutting = 0
 
         # Read data
         self._read_data()
@@ -65,22 +66,48 @@ class ClassificationDataset:
         self.num_timeseries = self.data.shape[0]
         self.num_channel = self.data.shape[1]
         self.len_timeseries = self.data.shape[2]
+        
+        if self.data_split =="train":
+            if self.len_timeseries > self.seq_len:
+                resampler = TimeSeriesResampler(sz = self.seq_len)
+                self.data = np.transpose(self.data,(0,2,1))
+                self.data = resampler.fit_transform(self.data)
+                self.data = np.transpose(self.data,(0,2,1))
+                self.data = self.data.reshape(-1, self.seq_len)
+                self.scaler.fit(self.data)
+                self.data = self.scaler.transform(self.data)
+                self.data = self.data.reshape(self.num_timeseries*self.num_channel, self.seq_len)
+            else:
+                self.data = self.data.reshape(-1, self.len_timeseries)
+                self.scaler.fit(self.data)
+                self.data = self.scaler.transform(self.data)
+                self.data = self.data.reshape(self.num_timeseries*self.num_channel, self.len_timeseries)
+                
+        elif self.data_split == "test":
+            if self.len_timeseries > self.seq_len:
+                new_rows = []
+                self.data = self.data.reshape(-1, self.len_timeseries)
+                self.scaler.fit(self.data)
+                self.data = self.scaler.transform(self.data)
+                self.data = self.data.reshape(self.num_timeseries*self.num_channel, self.len_timeseries)
 
-        if self.len_timeseries > self.seq_len:
-            resampler = TimeSeriesResampler(sz = self.seq_len)
-            self.data = np.transpose(self.data,(0,2,1))
-            self.data = resampler.fit_transform(self.data)
-            self.data = np.transpose(self.data,(0,2,1))
-            self.data = self.data.reshape(-1, self.seq_len)
-            self.scaler.fit(self.data)
-            self.data = self.scaler.transform(self.data)
-            self.data = self.data.reshape(self.num_timeseries*self.num_channel, self.seq_len)
+                for row in self.data:
+                    # 각 row를 split_size만큼 잘라서 추가
+                    for i in range(0, len(row), self.seq_len):
+                        temp_row = row[i:i + self.seq_len]
 
-        else:
-            self.data = self.data.reshape(-1, self.len_timeseries)
-            self.scaler.fit(self.data)
-            self.data = self.scaler.transform(self.data)
-            self.data = self.data.reshape(self.num_timeseries*self.num_channel, self.len_timeseries)
+                        if len(temp_row) < self.seq_len:
+                            self.cutting = len(temp_row)
+                            temp_row = np.pad(temp_row,(self.seq_len - len(temp_row),0))
+                        new_rows.append(temp_row)
+
+                self.data = np.array(new_rows)
+ 
+            else:
+                self.data = self.data.reshape(-1, self.len_timeseries)
+                self.scaler.fit(self.data)
+                self.data = self.scaler.transform(self.data)
+                self.data = self.data.reshape(self.num_timeseries*self.num_channel, self.len_timeseries)
 
         self.data = self.data.T
 
@@ -91,7 +118,12 @@ class ClassificationDataset:
         timeseries_len = len(timeseries)
         labels = self.labels[index,].astype(int)
         input_mask = np.ones(self.seq_len)
-        input_mask[: self.seq_len - timeseries_len] = 0
+        
+        if self.cutting > 0:
+            if sum(timeseries[:-self.cutting]) == 0:
+                input_mask[:-self.cutting] = 0
+        else:
+            input_mask[: self.seq_len - timeseries_len] = 0
 
         timeseries = np.pad(timeseries, (self.seq_len - timeseries_len, 0))
 
