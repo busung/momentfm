@@ -164,6 +164,9 @@ class MOMENT(nn.Module):
         self.num_domain = None
         if "num_domain" in kwargs:
             self.num_domain = kwargs["num_domain"]
+            
+        if "using_weight" in kwargs:
+            self.using_weight = kwargs["using_weight"]
 
         self.normalizer = RevIN(
             num_features=1, affine=config.getattr("revin_affine", False)
@@ -746,6 +749,16 @@ class MOMENT(nn.Module):
 
         return TimeseriesOutputs(embeddings=enc_out, logits=logits, metadata=reduction)
 
+    def freeze_domain_row(self,unfrozen_row=None):
+        if unfrozen_row is not None:
+            # 모든 행을 동결
+            self.patch_embedding.domain.requires_grad = False
+            print(f"matrix : {self.patch_embedding.domain} and requires_grad:{self.patch_embedding.domain.requires_grad}")
+            
+            # 특정 행의 동결 해제
+            self.patch_embedding.domain[unfrozen_row].requires_grad = True
+            print(f"domain : {self.patch_embedding.domain[unfrozen_row]} and requires_grad:{self.patch_embedding.domain[unfrozen_row].requires_grad}")
+
     def forward(
         self,
         x_enc: torch.Tensor,
@@ -787,6 +800,8 @@ class MOMENTPipeline(MOMENT, PyTorchModelHubMixin):
         )
         self.new_embedding = kwargs["new_embedding"]
         self.concat_other_layer = kwargs["concat_other_layer"]
+        self.using_weight = kwargs["using_weight"]
+        
         super().__init__(config, **kwargs)
 
     def _validate_model_kwargs(self, **kwargs: dict) -> None:
@@ -824,7 +839,8 @@ class MOMENTPipeline(MOMENT, PyTorchModelHubMixin):
             add_positional_embedding=self.config.getattr("add_positional_embedding", True),
             value_embedding_bias=self.config.getattr("value_embedding_bias", False),
             orth_gain=self.config.getattr("orth_gain", 1.41),
-            concat_other_layer = self.concat_other_layer
+            concat_other_layer = self.concat_other_layer,
+            using_weight = self.using_weight
         )
 
 def freeze_parameters(model):

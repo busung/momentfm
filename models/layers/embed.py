@@ -8,6 +8,8 @@ import torch.nn.init as init
 
 from momentfm.utils.masking import Masking
 
+import torch.nn.functional as F
+
 
 class PositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=5000, model_name="MOMENT"):
@@ -192,7 +194,8 @@ class PatchEmbedding(nn.Module):
         value_embedding_bias: bool = False,
         orth_gain: float = 1.41,
         num_domain: int = 0,
-        concat_other_layer: bool = False
+        concat_other_layer: bool = False,
+        using_weight: bool = False,
     ):
         super(PatchEmbedding, self).__init__()
         self.patch_len = patch_len
@@ -202,6 +205,7 @@ class PatchEmbedding(nn.Module):
         self.add_positional_embedding = add_positional_embedding
         self.num_domain = num_domain
         self.concat_other_layer = concat_other_layer
+        self.using_weight = using_weight
 
         self.value_embedding = nn.Linear(patch_len, d_model, bias=value_embedding_bias)
         self.mask_embedding = nn.Parameter(torch.zeros(d_model))
@@ -217,7 +221,13 @@ class PatchEmbedding(nn.Module):
 
         # nn.Parameter로 설정
         self.domain = nn.Parameter(initial_tensor)
-
+        
+        if self.using_weight:
+            temp_weight = torch.ones((self.num_domain,self.num_domain))
+            for i in range(self.num_domain):
+                temp_weight[i,i] = 0
+            self.domain_weight = nn.Parameter(temp_weight)
+        
         if (self.num_domain>0) & self.concat_other_layer:
             self.value_embedding = nn.Linear(patch_len, d_model, bias = value_embedding_bias)
             self.concat_embedding = nn.Linear(d_model + 5, d_model, bias = value_embedding_bias)
@@ -236,8 +246,15 @@ class PatchEmbedding(nn.Module):
 
         # Residual dropout
         self.dropout = nn.Dropout(dropout)
+        
+    def backward_hook(self):
+        def hook(grad):
+            grad[self.fixed_row] = 0
+            return grad
+        self.embedding.weight.register_hook(hook)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None, domain = None) -> torch.Tensor:
+        
         mask = Masking.convert_seq_to_patch_view(
             mask, patch_len=self.patch_len
         ).unsqueeze(-1)
@@ -250,14 +267,33 @@ class PatchEmbedding(nn.Module):
         )
         # mask : [batch_size x n_channels x n_patches x d_model]
         # x : [batch_size * n_chnnels * n_patches * patch_len]
-
+        #self.domain grad_requires 찍어보기
         if (self.num_domain>0) & self.concat_other_layer:
             batch_size = x.size(0)
             n_channels = x.size(1)
             number_of_patches = x.size(2)
-            domain_par = self.domain[domain,:].float()
-            #expanded_domain_vec = domain_par.unsqueeze(0).unsqueeze(0)
-            expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
+            if self.using_weight:
+                weight = self.domain_weight[domain,:].float()
+                weight = weight/torch.sum(weight).item()
+                
+                # selected_row = self.domain_weight[domain,:].float().clone()
+
+                # 특정 요소의 기울기 고정을 위한 Mask 생성
+                # mask = torch.ones_like(selected_row)
+                # mask[domain] = 0
+                # non_fixed_part = selected_row[mask.bool()]
+                # softmax_part = F.softmax(non_fixed_part, dim=0)
+                
+                domain_par = self.domain[domain,:].float()
+                aggregated_domain = torch.matmul(weight,self.domain)
+                domain_par = domain_par + aggregated_domain
+                
+                #domain_par = torch.matmul(weight,self.domain)
+                expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
+            else:
+                domain_par = self.domain[domain,:].float()
+                #expanded_domain_vec = domain_par.unsqueeze(0).unsqueeze(0)
+                expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
 
             x = self.value_embedding(x)
             x = torch.cat((x, expanded_domain_vec), dim=-1)
@@ -269,13 +305,35 @@ class PatchEmbedding(nn.Module):
             return self.dropout(x)
 
         elif (self.num_domain>0) & ~self.concat_other_layer:
-
+            
             batch_size = x.size(0)
             n_channels = x.size(1)
             number_of_patches = x.size(2)
-            domain_par = self.domain[domain,:].float()
-            #expanded_domain_vec = domain_par.unsqueeze(0).unsqueeze(0)
-            expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
+            
+            if self.using_weight:
+                weight = self.domain_weight[domain,:].float()
+                weight = weight/torch.sum(weight).item()
+                
+                # selected_row = self.domain_weight[domain,:].float().clone()
+
+                # 특정 요소의 기울기 고정을 위한 Mask 생성
+                # mask = torch.ones_like(selected_row)
+                # mask[domain] = 0
+                # non_fixed_part = selected_row[mask.bool()]
+                # softmax_part = F.softmax(non_fixed_part, dim=0)
+                
+                domain_par = self.domain[domain,:].float()
+                aggregated_domain = torch.matmul(weight,self.domain)
+
+                domain_par = domain_par + aggregated_domain
+                
+                #domain_par = torch.matmul(weight,self.domain)
+                expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
+
+            else:
+                domain_par = self.domain[domain,:].float()
+                #expanded_domain_vec = domain_par.unsqueeze(0).unsqueeze(0)
+                expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
 
             x = torch.cat((x, expanded_domain_vec), dim=-1)
 
