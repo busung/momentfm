@@ -223,10 +223,23 @@ class PatchEmbedding(nn.Module):
         self.domain = nn.Parameter(initial_tensor)
         
         if self.using_weight:
-            temp_weight = torch.ones((self.num_domain,self.num_domain))
-            for i in range(self.num_domain):
-                temp_weight[i,i] = 0
-            self.domain_weight = nn.Parameter(temp_weight)
+            # temp_weight = torch.ones((self.num_domain,self.num_domain))
+            # for i in range(self.num_domain):
+            #     temp_weight[i,i] = 0
+            # self.domain_weight = nn.Parameter(temp_weight)
+            
+            self.domain = nn.Parameter(init.xavier_uniform_(initial_tensor))
+            
+            self.lin_l = nn.Linear(5,5)
+            self.lin_r = nn.Linear(5,5)
+            
+            self.att_l = nn.Parameter(torch.ones(5))
+            self.att_r = nn.Parameter(torch.ones(5))
+            
+            self.concat_linear = nn.Linear(10,5)
+            
+            self.attention = torch.empty(self.num_domain,self.num_domain)
+            
         
         if (self.num_domain>0) & self.concat_other_layer:
             self.value_embedding = nn.Linear(patch_len, d_model, bias = value_embedding_bias)
@@ -253,6 +266,13 @@ class PatchEmbedding(nn.Module):
             return grad
         self.embedding.weight.register_hook(hook)
 
+    def custom_softmax(self,x,except_num):
+        exp_x = torch.exp(x)  # e^x
+        sum_exp_x = torch.sum(exp_x, dim=-1, keepdim=True)  # 각 행(row)마다 합계 계산
+        sum_exp_x = sum_exp_x - exp_x[except_num]
+        return exp_x / sum_exp_x  # e^x / sum(e^x)
+
+
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None, domain = None) -> torch.Tensor:
         
         mask = Masking.convert_seq_to_patch_view(
@@ -273,23 +293,50 @@ class PatchEmbedding(nn.Module):
             n_channels = x.size(1)
             number_of_patches = x.size(2)
             if self.using_weight:
-                weight = self.domain_weight[domain,:].float()
-                weight = weight/torch.sum(weight).item()
+                # weight = self.domain_weight[domain,:].float()
+                # weight = weight/torch.sum(weight).item()
                 
-                # selected_row = self.domain_weight[domain,:].float().clone()
+                # # selected_row = self.domain_weight[domain,:].float().clone()
 
-                # 특정 요소의 기울기 고정을 위한 Mask 생성
-                # mask = torch.ones_like(selected_row)
-                # mask[domain] = 0
-                # non_fixed_part = selected_row[mask.bool()]
-                # softmax_part = F.softmax(non_fixed_part, dim=0)
+                # # 특정 요소의 기울기 고정을 위한 Mask 생성
+                # # mask = torch.ones_like(selected_row)
+                # # mask[domain] = 0
+                # # non_fixed_part = selected_row[mask.bool()]
+                # # softmax_part = F.softmax(non_fixed_part, dim=0)
                 
-                domain_par = self.domain[domain,:].float()
-                aggregated_domain = torch.matmul(weight,self.domain)
-                domain_par = domain_par + aggregated_domain
+                # domain_par = self.domain[domain,:].float()
+                # aggregated_domain = torch.matmul(weight,self.domain)
+                # domain_par = domain_par + aggregated_domain
                 
-                #domain_par = torch.matmul(weight,self.domain)
-                expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
+                # #domain_par = torch.matmul(weight,self.domain)
+                # expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
+                
+                mask = torch.ones(self.num_domain)
+                mask[domain] = 0
+                selected_domain = self.lin_l(self.domain[domain,:].float())
+                #(5) * (5) => scalar (1)
+                scalar_domain = torch.matmul(selected_domain,self.att_l)
+                
+                #(n*5)
+                other_domain = self.lin_r(self.domain.float())
+                
+                #(n*5) * (5) => (n)
+                scalar_other_domain  = torch.matmul(other_domain,self.att_r)
+                alpha = F.leaky_relu(scalar_other_domain + scalar_domain)
+                
+                # (n)
+                attention = self.custom_softmax(alpha,domain)
+                updated_other_domain = attention.unsqueeze(-1) * other_domain
+                updated_other_domain = torch.sum(updated_other_domain[mask.bool()],dim=0)
+                
+                self.attention[domain,:] = attention
+                
+                concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
+                
+                updated_selected_domain = self.concat_linear(concated_domain)
+                
+                expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
+                
             else:
                 domain_par = self.domain[domain,:].float()
                 #expanded_domain_vec = domain_par.unsqueeze(0).unsqueeze(0)
@@ -311,24 +358,48 @@ class PatchEmbedding(nn.Module):
             number_of_patches = x.size(2)
             
             if self.using_weight:
-                weight = self.domain_weight[domain,:].float()
-                weight = weight/torch.sum(weight).item()
+                # weight = self.domain_weight[domain,:].float()
+                # weight = weight/torch.sum(weight).item()
                 
-                # selected_row = self.domain_weight[domain,:].float().clone()
+                # # selected_row = self.domain_weight[domain,:].float().clone()
 
-                # 특정 요소의 기울기 고정을 위한 Mask 생성
-                # mask = torch.ones_like(selected_row)
-                # mask[domain] = 0
-                # non_fixed_part = selected_row[mask.bool()]
-                # softmax_part = F.softmax(non_fixed_part, dim=0)
+                # # 특정 요소의 기울기 고정을 위한 Mask 생성
+                # # mask = torch.ones_like(selected_row)
+                # # mask[domain] = 0
+                # # non_fixed_part = selected_row[mask.bool()]
+                # # softmax_part = F.softmax(non_fixed_part, dim=0)
                 
-                domain_par = self.domain[domain,:].float()
-                aggregated_domain = torch.matmul(weight,self.domain)
+                # domain_par = self.domain[domain,:].float()
+                # aggregated_domain = torch.matmul(weight,self.domain)
 
-                domain_par = domain_par + aggregated_domain
+                # domain_par = domain_par + aggregated_domain
                 
-                #domain_par = torch.matmul(weight,self.domain)
-                expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
+                # #domain_par = torch.matmul(weight,self.domain)
+                # expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
+                
+                mask = torch.ones(domain)
+                mask[domain] = 0
+                selected_domain = self.lin_l(self.domain[domain,:].float)
+                #(5) * (5) => scalar (1)
+                domain_scalar = torch.matmul(selected_domain,self.att_l)
+                
+                #(n*5)
+                other_domain = self.lin_r(self.domain.float)
+                
+                #(n*5) * (5) => (n)
+                scalar_other_domain  = torch.matmul(other_domain,self.att_r)
+                alpha = F.leaky_relu(scalar_other_domain + other_domain)
+                
+                # (n)
+                attention = self.custom_softmax(alpha,domain)
+                updated_other_domain = attention.unsqueeze(-1) * other_domain
+                updated_other_domain = torch.sum(updated_other_domain[mask],dim=1)
+                
+                concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
+                
+                updated_selected_domain = self.concat_linear(concated_domain)
+                
+                expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
 
             else:
                 domain_par = self.domain[domain,:].float()
