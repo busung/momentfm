@@ -377,23 +377,25 @@ class PatchEmbedding(nn.Module):
                 # #domain_par = torch.matmul(weight,self.domain)
                 # expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
                 
-                mask = torch.ones(domain)
+                mask = torch.ones(self.num_domain)
                 mask[domain] = 0
-                selected_domain = self.lin_l(self.domain[domain,:].float)
+                selected_domain = self.lin_l(self.domain[domain,:].float())
                 #(5) * (5) => scalar (1)
-                domain_scalar = torch.matmul(selected_domain,self.att_l)
+                scalar_domain = torch.matmul(selected_domain,self.att_l)
                 
                 #(n*5)
-                other_domain = self.lin_r(self.domain.float)
+                other_domain = self.lin_r(self.domain.float())
                 
                 #(n*5) * (5) => (n)
                 scalar_other_domain  = torch.matmul(other_domain,self.att_r)
-                alpha = F.leaky_relu(scalar_other_domain + other_domain)
+                alpha = F.leaky_relu(scalar_other_domain + scalar_domain)
                 
                 # (n)
                 attention = self.custom_softmax(alpha,domain)
                 updated_other_domain = attention.unsqueeze(-1) * other_domain
-                updated_other_domain = torch.sum(updated_other_domain[mask],dim=1)
+                updated_other_domain = torch.sum(updated_other_domain[mask.bool()],dim=0)
+                
+                self.attention[domain,:] = attention
                 
                 concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
                 
