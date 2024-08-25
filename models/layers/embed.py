@@ -410,10 +410,8 @@ class PatchEmbedding(nn.Module):
                 #expanded_domain_vec = domain_par.unsqueeze(0).unsqueeze(0)
                 expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
 
-            x = mask * self.value_embedding(x) + (1 - mask) * self.mask_embedding
-            
             x = torch.cat((x, expanded_domain_vec), dim=-1)
-
+            
             # Input encoding
             x = mask * self.value_embedding(x) + (1 - mask) * self.mask_embedding
 
