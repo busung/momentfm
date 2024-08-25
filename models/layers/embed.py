@@ -311,8 +311,8 @@ class PatchEmbedding(nn.Module):
                 # #domain_par = torch.matmul(weight,self.domain)
                 # expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
                 
-                mask = torch.ones(self.num_domain)
-                mask[domain] = 0
+                temp_mask = torch.ones(self.num_domain)
+                temp_mask[domain] = 0
                 selected_domain = self.lin_l(self.domain[domain,:].float())
                 #(5) * (5) => scalar (1)
                 scalar_domain = torch.matmul(selected_domain,self.att_l)
@@ -327,7 +327,7 @@ class PatchEmbedding(nn.Module):
                 # (n)
                 attention = self.custom_softmax(alpha,domain)
                 updated_other_domain = attention.unsqueeze(-1) * other_domain
-                updated_other_domain = torch.sum(updated_other_domain[mask.bool()],dim=0)
+                updated_other_domain = torch.sum(updated_other_domain[temp_mask.bool()],dim=0)
                 
                 self.attention[domain,:] = attention
                 
@@ -345,6 +345,8 @@ class PatchEmbedding(nn.Module):
             x = self.value_embedding(x)
             x = torch.cat((x, expanded_domain_vec), dim=-1)
             x = self.concat_embedding(x)
+            
+            x = mask * x + (1 - mask) * self.mask_embedding
 
             if self.add_positional_embedding:
                 x = x + self.position_embedding(x)
@@ -377,8 +379,8 @@ class PatchEmbedding(nn.Module):
                 # #domain_par = torch.matmul(weight,self.domain)
                 # expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
                 
-                mask = torch.ones(self.num_domain)
-                mask[domain] = 0
+                temp_mask = torch.ones(self.num_domain)
+                temp_mask[domain] = 0
                 selected_domain = self.lin_l(self.domain[domain,:].float())
                 #(5) * (5) => scalar (1)
                 scalar_domain = torch.matmul(selected_domain,self.att_l)
@@ -393,7 +395,7 @@ class PatchEmbedding(nn.Module):
                 # (n)
                 attention = self.custom_softmax(alpha,domain)
                 updated_other_domain = attention.unsqueeze(-1) * other_domain
-                updated_other_domain = torch.sum(updated_other_domain[mask.bool()],dim=0)
+                updated_other_domain = torch.sum(updated_other_domain[temp_mask.bool()],dim=0)
                 
                 self.attention[domain,:] = attention
                 
@@ -408,15 +410,17 @@ class PatchEmbedding(nn.Module):
                 #expanded_domain_vec = domain_par.unsqueeze(0).unsqueeze(0)
                 expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
 
+            x = mask * self.value_embedding(x) + (1 - mask) * self.mask_embedding
+            
             x = torch.cat((x, expanded_domain_vec), dim=-1)
 
-        # Input encoding
-        x = mask * self.value_embedding(x) + (1 - mask) * self.mask_embedding
+            # Input encoding
+            x = mask * self.value_embedding(x) + (1 - mask) * self.mask_embedding
 
-        if self.add_positional_embedding:
-            x = x + self.position_embedding(x)
+            if self.add_positional_embedding:
+                x = x + self.position_embedding(x)
 
-        return self.dropout(x)
+            return self.dropout(x)
 
 
 class Patching(nn.Module):
