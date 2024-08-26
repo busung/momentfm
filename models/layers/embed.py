@@ -419,6 +419,13 @@ class PatchEmbedding(nn.Module):
                 x = x + self.position_embedding(x)
 
             return self.dropout(x)
+            # Input encoding
+        x = mask * self.value_embedding(x) + (1 - mask) * self.mask_embedding
+
+        if self.add_positional_embedding:
+            x = x + self.position_embedding(x)
+
+        return self.dropout(x)
 
 
 class Patching(nn.Module):
