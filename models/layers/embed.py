@@ -10,6 +10,8 @@ from momentfm.utils.masking import Masking
 
 import torch.nn.functional as F
 
+import numpy as np
+
 
 class PositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=5000, model_name="MOMENT"):
@@ -230,8 +232,11 @@ class PatchEmbedding(nn.Module):
             
             self.domain = nn.Parameter(init.xavier_uniform_(initial_tensor))
             
-            self.lin_l = nn.Linear(5,5)
-            self.lin_r = nn.Linear(5,5)
+            self.lin_l = nn.Linear(5,5,bias=False)
+            self.lin_r = nn.Linear(5,5,bias=False)
+            
+            # self.lin_l = nn.Linear(5,5)
+            # self.lin_r = nn.Linear(5,5)
             
             self.att_l = nn.Parameter(torch.ones(5))
             self.att_r = nn.Parameter(torch.ones(5))
@@ -239,6 +244,7 @@ class PatchEmbedding(nn.Module):
             self.concat_linear = nn.Linear(10,5)
             
             self.attention = torch.empty(self.num_domain,self.num_domain)
+            self.attention = nn.Parameter(self.attention,requires_grad=False)
             
         
         if (self.num_domain>0) & self.concat_other_layer:
@@ -271,6 +277,13 @@ class PatchEmbedding(nn.Module):
         sum_exp_x = torch.sum(exp_x, dim=-1, keepdim=True)  # 각 행(row)마다 합계 계산
         sum_exp_x = sum_exp_x - exp_x[except_num]
         return exp_x / sum_exp_x  # e^x / sum(e^x)
+    
+    def custom_log_softmax(self,x,except_num):
+        exp_x = torch.exp(x)  # e^x
+        sum_exp_x = torch.sum(exp_x, dim=-1, keepdim=True)  # 각 행(row)마다 합계 계산
+        sum_exp_x = sum_exp_x - exp_x[except_num]
+        log_sum_exp_x = torch.log(sum_exp_x)
+        return x - log_sum_exp_x  # e^x / sum(e^x)
 
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None, domain = None) -> torch.Tensor:
@@ -310,32 +323,74 @@ class PatchEmbedding(nn.Module):
                 
                 # #domain_par = torch.matmul(weight,self.domain)
                 # expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
-                
+                ######################################
                 temp_mask = torch.ones(self.num_domain)
                 temp_mask[domain] = 0
                 selected_domain = self.lin_l(self.domain[domain,:].float())
                 #(5) * (5) => scalar (1)
                 scalar_domain = torch.matmul(selected_domain,self.att_l)
                 
-                #(n*5)
-                other_domain = self.lin_r(self.domain.float())
+                #((n-1)*5)
+                other_domain = self.lin_r(self.domain[temp_mask.bool()].float())
                 
-                #(n*5) * (5) => (n)
-                scalar_other_domain  = torch.matmul(other_domain,self.att_r)
-                alpha = F.leaky_relu(scalar_other_domain + scalar_domain)
+                #(n-1*5) * (5) => (n-1)
+                scalar_other_domain = torch.matmul(other_domain,self.att_r)
+                alpha = F.leaky_relu(scalar_other_domain + scalar_domain,negative_slope=0.01)
                 
                 # (n)
-                attention = self.custom_softmax(alpha,domain)
-                updated_other_domain = attention.unsqueeze(-1) * other_domain
-                updated_other_domain = torch.sum(updated_other_domain[temp_mask.bool()],dim=0)
+                attention = F.softmax(alpha,dim=0)
+                temp_attention = attention.cpu()
+                #temp_attention = torch.exp(temp_attention)
+
+                if not np.isclose((torch.sum(temp_attention)).detach().numpy(),1.0):
+                    print("not 1")
+                    print((torch.sum(temp_attention)).detach().numpy())
                 
-                self.attention[domain,:] = attention
+                # (n-1,1) * (n-1)
+                updated_other_domain = attention.unsqueeze(-1) * other_domain
+                updated_other_domain = torch.sum(updated_other_domain,dim=0)
+                
+                self.attention[domain,:][temp_mask.bool()] = attention
                 
                 concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
                 
                 updated_selected_domain = self.concat_linear(concated_domain)
                 
                 expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
+                #####################################################
+                # temp_mask = torch.ones(self.num_domain)
+                # temp_mask[domain] = 0
+                # selected_domain = self.lin_l(self.domain[domain,:].float())
+                # #(5) * (5) => scalar (1)
+                # scalar_domain = torch.matmul(selected_domain,self.att_l)
+                
+                # #((n-1)*5)
+                # other_domain = self.lin_r(self.domain.float())
+                
+                # #(n-1*5) * (5) => (n-1)
+                # scalar_other_domain = torch.matmul(other_domain,self.att_r)
+                # alpha = F.leaky_relu(scalar_other_domain + scalar_domain,negative_slope=0.01)
+                
+                # # (n)
+                # attention = F.softmax(alpha,dim=0)
+                # temp_attention = attention.cpu()
+                # #temp_attention = torch.exp(temp_attention)
+
+                # if not np.isclose((torch.sum(temp_attention)).detach().numpy(),1.0):
+                #     print("not 1")
+                #     print((torch.sum(temp_attention)).detach().numpy())
+                
+                # # (n-1,1) * (n-1)
+                # updated_other_domain = attention.unsqueeze(-1) * other_domain
+                # updated_other_domain = torch.sum(updated_other_domain[temp_mask.bool()],dim=0)
+                
+                # self.attention = attention
+                
+                # concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
+                
+                # updated_selected_domain = self.concat_linear(concated_domain)
+                
+                # expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
                 
             else:
                 domain_par = self.domain[domain,:].float()
@@ -379,31 +434,74 @@ class PatchEmbedding(nn.Module):
                 # #domain_par = torch.matmul(weight,self.domain)
                 # expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
                 
+                ######################################
                 temp_mask = torch.ones(self.num_domain)
                 temp_mask[domain] = 0
                 selected_domain = self.lin_l(self.domain[domain,:].float())
                 #(5) * (5) => scalar (1)
                 scalar_domain = torch.matmul(selected_domain,self.att_l)
                 
-                #(n*5)
-                other_domain = self.lin_r(self.domain.float())
+                #((n-1)*5)
+                other_domain = self.lin_r(self.domain[temp_mask.bool()].float())
                 
-                #(n*5) * (5) => (n)
-                scalar_other_domain  = torch.matmul(other_domain,self.att_r)
-                alpha = F.leaky_relu(scalar_other_domain + scalar_domain)
+                #(n-1*5) * (5) => (n-1)
+                scalar_other_domain = torch.matmul(other_domain,self.att_r)
+                alpha = F.leaky_relu(scalar_other_domain + scalar_domain,negative_slope=0.01)
                 
                 # (n)
-                attention = self.custom_softmax(alpha,domain)
-                updated_other_domain = attention.unsqueeze(-1) * other_domain
-                updated_other_domain = torch.sum(updated_other_domain[temp_mask.bool()],dim=0)
+                attention = F.softmax(alpha,dim=0)
+                temp_attention = attention.cpu()
+                #temp_attention = torch.exp(temp_attention)
+
+                if not np.isclose((torch.sum(temp_attention)).detach().numpy(),1.0):
+                    print("not 1")
+                    print((torch.sum(temp_attention)).detach().numpy())
                 
-                self.attention[domain,:] = attention
+                # (n-1,1) * (n-1)
+                updated_other_domain = attention.unsqueeze(-1) * other_domain
+                updated_other_domain = torch.sum(updated_other_domain,dim=0)
+                
+                self.attention[domain,:][temp_mask.bool()] = attention
                 
                 concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
                 
                 updated_selected_domain = self.concat_linear(concated_domain)
                 
                 expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
+                #####################################################
+                # temp_mask = torch.ones(self.num_domain)
+                # temp_mask[domain] = 0
+                # selected_domain = self.lin_l(self.domain[domain,:].float())
+                # #(5) * (5) => scalar (1)
+                # scalar_domain = torch.matmul(selected_domain,self.att_l)
+                
+                # #((n-1)*5)
+                # other_domain = self.lin_r(self.domain.float())
+                
+                # #(n-1*5) * (5) => (n-1)
+                # scalar_other_domain = torch.matmul(other_domain,self.att_r)
+                # alpha = F.leaky_relu(scalar_other_domain + scalar_domain,negative_slope=0.01)
+                
+                # # (n)
+                # attention = F.softmax(alpha,dim=0)
+                # temp_attention = attention.cpu()
+                # #temp_attention = torch.exp(temp_attention)
+
+                # if not np.isclose((torch.sum(temp_attention)).detach().numpy(),1.0):
+                #     print("not 1")
+                #     print((torch.sum(temp_attention)).detach().numpy())
+                
+                # # (n-1,1) * (n-1)
+                # updated_other_domain = attention.unsqueeze(-1) * other_domain
+                # updated_other_domain = torch.sum(updated_other_domain[temp_mask.bool()],dim=0)
+                
+                # self.attention = attention
+                
+                # concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
+                
+                # updated_selected_domain = self.concat_linear(concated_domain)
+                
+                # expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
 
             else:
                 domain_par = self.domain[domain,:].float()
@@ -414,7 +512,7 @@ class PatchEmbedding(nn.Module):
             
             # Input encoding
             x = mask * self.value_embedding(x) + (1 - mask) * self.mask_embedding
-
+            
             if self.add_positional_embedding:
                 x = x + self.position_embedding(x)
 
