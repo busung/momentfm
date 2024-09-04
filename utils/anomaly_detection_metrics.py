@@ -1,15 +1,20 @@
 import numpy as np
+import tqdm
+import cupy as cp
 
+from sklearn.metrics import f1_score
 
-def f1_score(predict, actual):
-    TP = np.sum(predict * actual)
-    TN = np.sum((1 - predict) * (1 - actual))
-    FP = np.sum(predict * (1 - actual))
-    FN = np.sum((1 - predict) * actual)
-    precision = TP / (TP + FP + 0.00001)
-    recall = TP / (TP + FN + 0.00001)
-    f1 = 2 * precision * recall / (precision + recall + 0.00001)
-    return f1
+# def f1_score(predict, actual):
+    
+#     TP = np.sum(predict * actual)
+#     TN = np.sum((1 - predict) * (1 - actual))
+#     FP = np.sum(predict * (1 - actual))
+#     FN = np.sum((1 - predict) * actual)
+#     precision = TP / (TP + FP + 0.00001)
+#     recall = TP / (TP + FN + 0.00001)
+#     f1 = 2 * precision * recall / (precision + recall + 0.00001)
+    
+#     return f1
 
 
 def adjust_predicts(score, label, threshold=None, pred=None, calc_latency=False):
@@ -61,8 +66,8 @@ def adjust_predicts(score, label, threshold=None, pred=None, calc_latency=False)
 def adjbestf1(y_true: np.array, y_scores: np.array, n_splits: int = 100):
     thresholds = np.linspace(y_scores.min(), y_scores.max(), n_splits)
     adjusted_f1 = np.zeros(thresholds.shape)
-
-    for i, threshold in enumerate(thresholds):
+    
+    for i, threshold in enumerate(thresholds),total=len(thresholds):
         y_pred = y_scores >= threshold
         y_pred = adjust_predicts(
             score=y_scores,
@@ -72,6 +77,7 @@ def adjbestf1(y_true: np.array, y_scores: np.array, n_splits: int = 100):
             calc_latency=False,
         )
         adjusted_f1[i] = f1_score(y_pred, y_true)
-
+        
     best_adjusted_f1 = np.max(adjusted_f1)
+
     return best_adjusted_f1
