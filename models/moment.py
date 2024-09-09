@@ -787,7 +787,6 @@ class MOMENT(nn.Module):
         else:
             raise NotImplementedError(f"Task {self.task_name} not implemented.")
 
-
 class MOMENTPipeline(MOMENT, PyTorchModelHubMixin):
     #from_pretrained인 class method가 먼저 실행된 뒤 해당 init이 실행됨
     #class method에서 return으로 해당 class를 return하기 때문

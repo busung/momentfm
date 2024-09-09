@@ -230,7 +230,8 @@ class PatchEmbedding(nn.Module):
             #     temp_weight[i,i] = 0
             # self.domain_weight = nn.Parameter(temp_weight)
             
-            self.domain = nn.Parameter(init.xavier_uniform_(initial_tensor))
+            #self.domain = nn.Parameter(init.xavier_uniform_(initial_tensor))
+            self.domain = nn.Parameter(torch.abs(torch.randn_like(initial_tensor)))
             
             self.lin_l = nn.Linear(5,5,bias=False)
             self.lin_r = nn.Linear(5,5,bias=False)
@@ -243,7 +244,7 @@ class PatchEmbedding(nn.Module):
             
             self.concat_linear = nn.Linear(10,5)
             
-            self.attention = torch.empty(self.num_domain,self.num_domain)
+            self.attention = torch.zeros(self.num_domain,self.num_domain)
             self.attention = nn.Parameter(self.attention,requires_grad=False)
             
         
@@ -352,7 +353,7 @@ class PatchEmbedding(nn.Module):
                 
                 with torch.no_grad():
                     self.attention[domain,:][temp_mask.bool()] = attention
-                
+                        
                 concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
                 
                 updated_selected_domain = self.concat_linear(concated_domain)

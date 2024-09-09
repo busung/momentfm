@@ -67,7 +67,7 @@ def adjbestf1(y_true: np.array, y_scores: np.array, n_splits: int = 100):
     thresholds = np.linspace(y_scores.min(), y_scores.max(), n_splits)
     adjusted_f1 = np.zeros(thresholds.shape)
     
-    for i, threshold in enumerate(thresholds),total=len(thresholds):
+    for i, threshold in enumerate(thresholds):
         y_pred = y_scores >= threshold
         y_pred = adjust_predicts(
             score=y_scores,
