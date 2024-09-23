@@ -800,6 +800,7 @@ class MOMENTPipeline(MOMENT, PyTorchModelHubMixin):
         self.new_embedding = kwargs["new_embedding"]
         self.concat_other_layer = kwargs["concat_other_layer"]
         self.using_weight = kwargs["using_weight"]
+        self.domain_standardization = kwargs["domain_standardization"]
         
         super().__init__(config, **kwargs)
 
@@ -839,7 +840,8 @@ class MOMENTPipeline(MOMENT, PyTorchModelHubMixin):
             value_embedding_bias=self.config.getattr("value_embedding_bias", False),
             orth_gain=self.config.getattr("orth_gain", 1.41),
             concat_other_layer = self.concat_other_layer,
-            using_weight = self.using_weight
+            using_weight = self.using_weight,
+            domain_standardization = self.domain_standardization
         )
 
 def freeze_parameters(model):

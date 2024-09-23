@@ -198,6 +198,7 @@ class PatchEmbedding(nn.Module):
         num_domain: int = 0,
         concat_other_layer: bool = False,
         using_weight: bool = False,
+        domain_standardization: bool = False,
     ):
         super(PatchEmbedding, self).__init__()
         self.patch_len = patch_len
@@ -211,12 +212,12 @@ class PatchEmbedding(nn.Module):
 
         self.value_embedding = nn.Linear(patch_len, d_model, bias=value_embedding_bias)
         self.mask_embedding = nn.Parameter(torch.zeros(d_model))
-
-        # 1D 텐서를 먼저 Xavier 초기화
-        initial_tensor = torch.empty(5)
+        self.domain_standardization = domain_standardization
+        
+        initial_tensor = torch.randn(1,5)
 
         if num_domain:
-            init.xavier_uniform_(initial_tensor.unsqueeze(0))  # (1, num_cols)로 변환 후 초기화
+            #init.xavier_uniform_(initial_tensor.unsqueeze(0))  # (1, num_cols)로 변환 후 초기화
 
             # 동일한 행을 반복하여 2D 텐서 생성
             initial_tensor = initial_tensor.repeat(num_domain, 1)  # (num_rows, num_cols) 형태로 복제
@@ -231,7 +232,8 @@ class PatchEmbedding(nn.Module):
             # self.domain_weight = nn.Parameter(temp_weight)
             
             #self.domain = nn.Parameter(init.xavier_uniform_(initial_tensor))
-            self.domain = nn.Parameter(torch.abs(torch.randn_like(initial_tensor)))
+            
+            #self.domain = nn.Parameter(torch.abs(torch.randn_like(initial_tensor)))
             
             self.lin_l = nn.Linear(5,5,bias=False)
             self.lin_r = nn.Linear(5,5,bias=False)
@@ -327,12 +329,21 @@ class PatchEmbedding(nn.Module):
                 ######################################
                 temp_mask = torch.ones(self.num_domain)
                 temp_mask[domain] = 0
-                selected_domain = self.lin_l(self.domain[domain,:].float())
+                
+                domain_tensor = self.domain
+                
+                if self.domain_standardization:
+                    avg = self.domain.mean(dim=1,keepdim=True)
+                    std = self.domain.mean(dim=1,keepdim=True)
+                    
+                    domain_tensor = (self.domain-avg)/std
+                                           
+                selected_domain = self.lin_l(domain_tensor[domain,:].float())
                 #(5) * (5) => scalar (1)
                 scalar_domain = torch.matmul(selected_domain,self.att_l)
                 
                 #((n-1)*5)
-                other_domain = self.lin_r(self.domain[temp_mask.bool()].float())
+                other_domain = self.lin_r(domain_tensor[temp_mask.bool()].float())
                 
                 #(n-1*5) * (5) => (n-1)
                 scalar_other_domain = torch.matmul(other_domain,self.att_r)
@@ -439,12 +450,22 @@ class PatchEmbedding(nn.Module):
                 ######################################
                 temp_mask = torch.ones(self.num_domain)
                 temp_mask[domain] = 0
-                selected_domain = self.lin_l(self.domain[domain,:].float())
+                
+                domain_tensor = self.domain
+                
+                if self.domain_standardization:
+                    avg = self.domain.mean(dim=1,keepdim=True)
+                    std = self.domain.mean(dim=1,keepdim=True)
+                    
+                    domain_tensor = (self.domain-avg)/std
+                    
+                                    
+                selected_domain = self.lin_l(domain_tensor[domain,:].float())
                 #(5) * (5) => scalar (1)
                 scalar_domain = torch.matmul(selected_domain,self.att_l)
                 
                 #((n-1)*5)
-                other_domain = self.lin_r(self.domain[temp_mask.bool()].float())
+                other_domain = self.lin_r(domain_tensor[temp_mask.bool()].float())
                 
                 #(n-1*5) * (5) => (n-1)
                 scalar_other_domain = torch.matmul(other_domain,self.att_r)
