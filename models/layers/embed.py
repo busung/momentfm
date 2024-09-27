@@ -330,7 +330,7 @@ class PatchEmbedding(nn.Module):
                 temp_mask = torch.ones(self.num_domain)
                 temp_mask[domain] = 0
                 
-                domain_tensor = self.domain.clone()
+                domain_tensor = self.domain.clone().detach()
                 
                 if self.domain_standardization:
                     avg = self.domain.mean(dim=1,keepdim=True)
@@ -368,8 +368,7 @@ class PatchEmbedding(nn.Module):
                 
                 with torch.no_grad():
                     self.attention[domain,:][temp_mask.bool()] = attention
-                    domain_tensor[domain,:] = updated_selected_domain
-                    self.domain = domain_tensor
+                    self.domain[domain,:] = updated_selected_domain
                 
                 expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
                 #####################################################
@@ -453,7 +452,7 @@ class PatchEmbedding(nn.Module):
                 temp_mask = torch.ones(self.num_domain)
                 temp_mask[domain] = 0
                 
-                domain_tensor = self.domain.clone()
+                domain_tensor = self.domain.detach()
                 
                 if self.domain_standardization:
                     avg = self.domain.mean(dim=1,keepdim=True)
@@ -492,9 +491,9 @@ class PatchEmbedding(nn.Module):
                 
                 with torch.no_grad():
                     self.attention[domain,:][temp_mask.bool()] = attention                
-                    domain_tensor[domain,:] = updated_selected_domain
-                    self.domain = domain_tensor
-                
+                    self.domain[domain,:] = updated_selected_domain
+
+
                 expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
                 #####################################################
                 # temp_mask = torch.ones(self.num_domain)
