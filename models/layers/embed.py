@@ -362,12 +362,11 @@ class PatchEmbedding(nn.Module):
                 updated_other_domain = attention.unsqueeze(-1) * other_domain
                 updated_other_domain = torch.sum(updated_other_domain,dim=0)
                 
-                with torch.no_grad():
-                    self.attention[domain,:][temp_mask.bool()] = attention
-                        
                 concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
                 
-                updated_selected_domain = self.concat_linear(concated_domain)
+                with torch.no_grad():
+                    self.attention[domain,:][temp_mask.bool()] = attention
+                    updated_selected_domain = self.concat_linear(concated_domain)
                 
                 self.domain[domain,:] = updated_selected_domain
                 
@@ -486,12 +485,11 @@ class PatchEmbedding(nn.Module):
                 updated_other_domain = attention.unsqueeze(-1) * other_domain
                 updated_other_domain = torch.sum(updated_other_domain,dim=0)
                 
-                with torch.no_grad():
-                    self.attention[domain,:][temp_mask.bool()] = attention
-                
                 concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
                 
-                updated_selected_domain = self.concat_linear(concated_domain)
+                with torch.no_grad():
+                    self.attention[domain,:][temp_mask.bool()] = attention
+                    updated_selected_domain = self.concat_linear(concated_domain)
                 
                 self.domain[domain,:] = updated_selected_domain
                 
