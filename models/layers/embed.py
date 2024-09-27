@@ -223,7 +223,7 @@ class PatchEmbedding(nn.Module):
             initial_tensor = initial_tensor.repeat(num_domain, 1)  # (num_rows, num_cols) 형태로 복제
 
         # nn.Parameter로 설정
-        self.domain = nn.Parameter(initial_tensor)
+        self.domain = nn.Parameter(initial_tensor,requires_grad = False)
         
         if self.using_weight:
             # temp_weight = torch.ones((self.num_domain,self.num_domain))
@@ -369,6 +369,8 @@ class PatchEmbedding(nn.Module):
                 
                 updated_selected_domain = self.concat_linear(concated_domain)
                 
+                self.domain[domain,:] = updated_selected_domain
+                
                 expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
                 #####################################################
                 # temp_mask = torch.ones(self.num_domain)
@@ -490,6 +492,8 @@ class PatchEmbedding(nn.Module):
                 concated_domain = torch.cat((selected_domain,updated_other_domain),dim=-1)
                 
                 updated_selected_domain = self.concat_linear(concated_domain)
+                
+                self.domain[domain,:] = updated_selected_domain
                 
                 expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
                 #####################################################
