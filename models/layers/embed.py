@@ -452,7 +452,7 @@ class PatchEmbedding(nn.Module):
                 temp_mask = torch.ones(self.num_domain)
                 temp_mask[domain] = 0
                 
-                domain_tensor = self.domain.detach()
+                domain_tensor = self.domain.clone().detach()
                 
                 if self.domain_standardization:
                     avg = self.domain.mean(dim=1,keepdim=True)
