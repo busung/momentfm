@@ -199,6 +199,7 @@ class PatchEmbedding(nn.Module):
         concat_other_layer: bool = False,
         using_weight: bool = False,
         domain_standardization: bool = False,
+        dim_of_domain = 5
     ):
         super(PatchEmbedding, self).__init__()
         self.patch_len = patch_len
@@ -213,8 +214,9 @@ class PatchEmbedding(nn.Module):
         self.value_embedding = nn.Linear(patch_len, d_model, bias=value_embedding_bias)
         self.mask_embedding = nn.Parameter(torch.zeros(d_model))
         self.domain_standardization = domain_standardization
+        self.dim_of_domain = dim_of_domain
         
-        initial_tensor = torch.randn(1,5)
+        initial_tensor = torch.randn(1,self.dim_of_domain)
 
         if num_domain:
             #init.xavier_uniform_(initial_tensor.unsqueeze(0))  # (1, num_cols)로 변환 후 초기화
@@ -235,16 +237,16 @@ class PatchEmbedding(nn.Module):
             
             #self.domain = nn.Parameter(torch.abs(torch.randn_like(initial_tensor)))
             
-            self.lin_l = nn.Linear(5,5,bias=False)
-            self.lin_r = nn.Linear(5,5,bias=False)
+            self.lin_l = nn.Linear(self.dim_of_domain,self.dim_of_domain,bias=False)
+            self.lin_r = nn.Linear(self.dim_of_domain,self.dim_of_domain,bias=False)
             
             # self.lin_l = nn.Linear(5,5)
             # self.lin_r = nn.Linear(5,5)
             
-            self.att_l = nn.Parameter(torch.ones(5))
-            self.att_r = nn.Parameter(torch.ones(5))
+            self.att_l = nn.Parameter(torch.ones(self.dim_of_domain))
+            self.att_r = nn.Parameter(torch.ones(self.dim_of_domain))
             
-            self.concat_linear = nn.Linear(10,5)
+            self.concat_linear = nn.Linear(self.dim_of_domain*2,self.dim_of_domain)
             
             self.attention = torch.zeros(self.num_domain,self.num_domain)
             self.attention = nn.Parameter(self.attention,requires_grad=False)
@@ -252,9 +254,9 @@ class PatchEmbedding(nn.Module):
         
         if (self.num_domain>0) & self.concat_other_layer:
             self.value_embedding = nn.Linear(patch_len, d_model, bias = value_embedding_bias)
-            self.concat_embedding = nn.Linear(d_model + 5, d_model, bias = value_embedding_bias)
+            self.concat_embedding = nn.Linear(d_model + self.dim_of_domain, d_model, bias = value_embedding_bias)
         elif (self.num_domain>0) & ~self.concat_other_layer:
-            self.value_embedding = nn.Linear(patch_len+5, d_model, bias = value_embedding_bias)
+            self.value_embedding = nn.Linear(patch_len+self.dim_of_domain, d_model, bias = value_embedding_bias)
 
         if orth_gain is not None:
             torch.nn.init.orthogonal_(self.value_embedding.weight, gain=orth_gain)
@@ -369,7 +371,7 @@ class PatchEmbedding(nn.Module):
                 
                 updated_selected_domain = self.concat_linear(concated_domain)
                 
-                expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
+                expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, self.dim_of_domain)
                 #####################################################
                 # temp_mask = torch.ones(self.num_domain)
                 # temp_mask[domain] = 0
@@ -408,7 +410,7 @@ class PatchEmbedding(nn.Module):
             else:
                 domain_par = self.domain[domain,:].float()
                 #expanded_domain_vec = domain_par.unsqueeze(0).unsqueeze(0)
-                expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
+                expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, self.dim_of_domain)
 
             x = self.value_embedding(x)
             x = torch.cat((x, expanded_domain_vec), dim=-1)
@@ -491,7 +493,7 @@ class PatchEmbedding(nn.Module):
                 
                 updated_selected_domain = self.concat_linear(concated_domain)
                 
-                expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, 5)
+                expanded_domain_vec = updated_selected_domain.expand(batch_size, n_channels, number_of_patches, self.dim_of_domain)
                 #####################################################
                 # temp_mask = torch.ones(self.num_domain)
                 # temp_mask[domain] = 0
@@ -530,7 +532,7 @@ class PatchEmbedding(nn.Module):
             else:
                 domain_par = self.domain[domain,:].float()
                 #expanded_domain_vec = domain_par.unsqueeze(0).unsqueeze(0)
-                expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, 5)
+                expanded_domain_vec = domain_par.expand(batch_size, n_channels, number_of_patches, self.dim_of_domain)
 
             x = torch.cat((x, expanded_domain_vec), dim=-1)
             
