@@ -5,7 +5,7 @@ import torch
 
 class Masking:
     def __init__(
-        self, mask_ratio: float = 0.3, patch_len: int = 8, stride: Optional[int] = None
+        self, mask_ratio: float = 0.3, patch_len: int = 8, stride: Optional[int] = None, rand_seed = None
     ):
         """
         Indices with 0 mask are hidden, and with 1 are observed.
@@ -13,6 +13,7 @@ class Masking:
         self.mask_ratio = mask_ratio
         self.patch_len = patch_len
         self.stride = patch_len if stride is None else stride
+        self.rand_seed = rand_seed
 
     @staticmethod
     def convert_seq_to_patch_view(
@@ -66,7 +67,10 @@ class Masking:
             input_mask: torch.Tensor of shape [batch_size x seq_len]
         Output:
             mask : torch.Tensor of shape [batch_size x n_patches]
-        """
+        """    
+        if self.rand_seed:
+            torch.manual_seed(self.rand_seed)
+        
         input_mask = self.convert_seq_to_patch_view(
             input_mask, self.patch_len, self.stride
         )

@@ -75,12 +75,12 @@ class ClassificationDataset:
                 self.data = np.transpose(self.data,(0,2,1))
                 self.data = self.data.reshape(-1, self.seq_len)
                 self.scaler.fit(self.data)
-                self.data = self.scaler.transform(self.data)
+                #self.data = self.scaler.transform(self.data)
                 self.data = self.data.reshape(self.num_timeseries*self.num_channel, self.seq_len)
             else:
                 self.data = self.data.reshape(-1, self.len_timeseries)
                 self.scaler.fit(self.data)
-                self.data = self.scaler.transform(self.data)
+                #self.data = self.scaler.transform(self.data)
                 self.data = self.data.reshape(self.num_timeseries*self.num_channel, self.len_timeseries)
                 
         elif self.data_split == "test":
