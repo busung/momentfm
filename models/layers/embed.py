@@ -198,6 +198,7 @@ class PatchEmbedding(nn.Module):
         num_domain: int = 0,
         concat_other_layer: bool = False,
         using_weight: bool = False,
+        same_weight: bool = False,
         domain_standardization: bool = False,
         dim_of_domain = 5
     ):
@@ -210,6 +211,7 @@ class PatchEmbedding(nn.Module):
         self.num_domain = num_domain
         self.concat_other_layer = concat_other_layer
         self.using_weight = using_weight
+        self.same_weight = same_weight
 
         self.value_embedding = nn.Linear(patch_len, d_model, bias=value_embedding_bias)
         self.mask_embedding = nn.Parameter(torch.zeros(d_model))
@@ -217,6 +219,7 @@ class PatchEmbedding(nn.Module):
         self.dim_of_domain = dim_of_domain
         
         initial_tensor = torch.randn(1,self.dim_of_domain)
+        #initial_tensor = torch.randn(self.dim_of_domain)
 
         if num_domain:
             #init.xavier_uniform_(initial_tensor.unsqueeze(0))  # (1, num_cols)로 변환 후 초기화
@@ -346,19 +349,24 @@ class PatchEmbedding(nn.Module):
                 
                 #((n-1)*5)
                 other_domain = self.lin_r(domain_tensor[temp_mask.bool()].float())
-                
-                #(n-1*5) * (5) => (n-1)
-                scalar_other_domain = torch.matmul(other_domain,self.att_r)
-                alpha = F.leaky_relu(scalar_other_domain + scalar_domain,negative_slope=0.01)
-                
-                # (n)
-                attention = F.softmax(alpha,dim=0)
-                temp_attention = attention.cpu()
-                #temp_attention = torch.exp(temp_attention)
 
-                if not np.isclose((torch.sum(temp_attention)).detach().numpy(),1.0):
-                    print("not 1")
-                    print((torch.sum(temp_attention)).detach().numpy())
+                if ~self.same_weight:
+                    #(n-1*5) * (5) => (n-1)
+                    scalar_other_domain = torch.matmul(other_domain,self.att_r)
+                    alpha = F.leaky_relu(scalar_other_domain + scalar_domain,negative_slope=0.01)
+                    
+                    # (n)
+                    attention = F.softmax(alpha,dim=0)
+                    temp_attention = attention.cpu()
+                    #temp_attention = torch.exp(temp_attention)
+
+                    if not np.isclose((torch.sum(temp_attention)).detach().numpy(),1.0):
+                        print("not 1")
+                        print((torch.sum(temp_attention)).detach().numpy())
+                else:
+                    attention = torch.full((1/(self.num_domain-1)),self.num_domain-1)
+                
+                print(self.attention)
                 
                 # (n-1,1) * (n-1)
                 updated_other_domain = attention.unsqueeze(-1) * other_domain
@@ -465,22 +473,22 @@ class PatchEmbedding(nn.Module):
                 selected_domain = self.lin_l(domain_tensor[domain,:].float())
                 #(5) * (5) => scalar (1)
                 scalar_domain = torch.matmul(selected_domain,self.att_l)
-                
-                #((n-1)*5)
-                other_domain = self.lin_r(domain_tensor[temp_mask.bool()].float())
-                
-                #(n-1*5) * (5) => (n-1)
-                scalar_other_domain = torch.matmul(other_domain,self.att_r)
-                alpha = F.leaky_relu(scalar_other_domain + scalar_domain,negative_slope=0.01)
-                
-                # (n)
-                attention = F.softmax(alpha,dim=0)
-                temp_attention = attention.cpu()
-                #temp_attention = torch.exp(temp_attention)
 
-                if not np.isclose((torch.sum(temp_attention)).detach().numpy(),1.0):
-                    print("not 1")
-                    print((torch.sum(temp_attention)).detach().numpy())
+                if ~self.same_weight:
+                    #(n-1*5) * (5) => (n-1)
+                    scalar_other_domain = torch.matmul(other_domain,self.att_r)
+                    alpha = F.leaky_relu(scalar_other_domain + scalar_domain,negative_slope=0.01)
+                    
+                    # (n)
+                    attention = F.softmax(alpha,dim=0)
+                    temp_attention = attention.cpu()
+                    #temp_attention = torch.exp(temp_attention)
+
+                    if not np.isclose((torch.sum(temp_attention)).detach().numpy(),1.0):
+                        print("not 1")
+                        print((torch.sum(temp_attention)).detach().numpy())
+                else:
+                    attention = torch.full((1/(self.num_domain-1)),self.num_domain-1)
                 
                 # (n-1,1) * (n-1)
                 updated_other_domain = attention.unsqueeze(-1) * other_domain
@@ -544,6 +552,7 @@ class PatchEmbedding(nn.Module):
 
             return self.dropout(x)
             # Input encoding
+
         x = mask * self.value_embedding(x) + (1 - mask) * self.mask_embedding
 
         if self.add_positional_embedding:

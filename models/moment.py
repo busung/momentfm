@@ -802,6 +802,7 @@ class MOMENTPipeline(MOMENT, PyTorchModelHubMixin):
         self.using_weight = kwargs["using_weight"]
         self.domain_standardization = kwargs["domain_standardization"]
         self.dim_of_domain = kwargs["dim_of_domain"]
+        self.same_weight = kwargs["same_weight"]
         
         super().__init__(config, **kwargs)
 
@@ -843,7 +844,8 @@ class MOMENTPipeline(MOMENT, PyTorchModelHubMixin):
             concat_other_layer = self.concat_other_layer,
             using_weight = self.using_weight,
             domain_standardization = self.domain_standardization,
-            dim_of_domain = self.dim_of_domain
+            dim_of_domain = self.dim_of_domain,
+            same_weight = self.same_weight
         )
 
 def freeze_parameters(model):
