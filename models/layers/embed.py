@@ -220,6 +220,10 @@ class PatchEmbedding(nn.Module):
         
         initial_tensor = torch.randn(1,self.dim_of_domain)
         #initial_tensor = torch.randn(self.dim_of_domain)
+        
+        if self.num_domain>0:
+            self.attention_same = torch.full((self.num_domain-1,),(1/(self.num_domain-1)))
+            self.attention_same = nn.Parameter(self.attention_same,requires_grad=False)
 
         if num_domain:
             #init.xavier_uniform_(initial_tensor.unsqueeze(0))  # (1, num_cols)로 변환 후 초기화
@@ -350,7 +354,10 @@ class PatchEmbedding(nn.Module):
                 #((n-1)*5)
                 other_domain = self.lin_r(domain_tensor[temp_mask.bool()].float())
 
-                if ~self.same_weight:
+                if self.same_weight:
+                    attention = self.attention_same
+                else:
+                    print("work well")
                     #(n-1*5) * (5) => (n-1)
                     scalar_other_domain = torch.matmul(other_domain,self.att_r)
                     alpha = F.leaky_relu(scalar_other_domain + scalar_domain,negative_slope=0.01)
@@ -363,10 +370,6 @@ class PatchEmbedding(nn.Module):
                     if not np.isclose((torch.sum(temp_attention)).detach().numpy(),1.0):
                         print("not 1")
                         print((torch.sum(temp_attention)).detach().numpy())
-                else:
-                    attention = torch.full((1/(self.num_domain-1)),self.num_domain-1)
-                
-                print(self.attention)
                 
                 # (n-1,1) * (n-1)
                 updated_other_domain = attention.unsqueeze(-1) * other_domain
