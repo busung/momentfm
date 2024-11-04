@@ -199,6 +199,7 @@ class PatchEmbedding(nn.Module):
         concat_other_layer: bool = False,
         using_weight: bool = False,
         same_weight: bool = False,
+        random_weight: bool = False,
         domain_standardization: bool = False,
         dim_of_domain = 5
     ):
@@ -212,6 +213,7 @@ class PatchEmbedding(nn.Module):
         self.concat_other_layer = concat_other_layer
         self.using_weight = using_weight
         self.same_weight = same_weight
+        self.random_weight = random_weight
 
         self.value_embedding = nn.Linear(patch_len, d_model, bias=value_embedding_bias)
         self.mask_embedding = nn.Parameter(torch.zeros(d_model))
@@ -224,7 +226,10 @@ class PatchEmbedding(nn.Module):
         if self.num_domain>0:
             self.attention_same = torch.full((self.num_domain-1,),(1/(self.num_domain-1)))
             self.attention_same = nn.Parameter(self.attention_same,requires_grad=False)
-
+            self.attention_random = torch.abs((torch.randn(self.num_domain-1)))
+            self.attention_random /= torch.sum(self.attention_random)
+            self.attention_random = nn.Parameter(self.attention_random)
+            
         if num_domain:
             #init.xavier_uniform_(initial_tensor.unsqueeze(0))  # (1, num_cols)로 변환 후 초기화
 
@@ -356,8 +361,14 @@ class PatchEmbedding(nn.Module):
 
                 if self.same_weight:
                     attention = self.attention_same
+                    
+                elif self.random_weight:
+                    attention = self.attention_random
+                    # attention = torch.randn(self.num_domain-1)
+                    # attention = torch.abs(attention)
+                    # attention /= torch.sum(attention)
+
                 else:
-                    print("work well")
                     #(n-1*5) * (5) => (n-1)
                     scalar_other_domain = torch.matmul(other_domain,self.att_r)
                     alpha = F.leaky_relu(scalar_other_domain + scalar_domain,negative_slope=0.01)
@@ -370,7 +381,7 @@ class PatchEmbedding(nn.Module):
                     if not np.isclose((torch.sum(temp_attention)).detach().numpy(),1.0):
                         print("not 1")
                         print((torch.sum(temp_attention)).detach().numpy())
-                
+
                 # (n-1,1) * (n-1)
                 updated_other_domain = attention.unsqueeze(-1) * other_domain
                 updated_other_domain = torch.sum(updated_other_domain,dim=0)

@@ -803,6 +803,7 @@ class MOMENTPipeline(MOMENT, PyTorchModelHubMixin):
         self.domain_standardization = kwargs["domain_standardization"]
         self.dim_of_domain = kwargs["dim_of_domain"]
         self.same_weight = kwargs["same_weight"]
+        self.random_weight = kwargs["random_weight"]
         
         super().__init__(config, **kwargs)
 
@@ -845,7 +846,8 @@ class MOMENTPipeline(MOMENT, PyTorchModelHubMixin):
             using_weight = self.using_weight,
             domain_standardization = self.domain_standardization,
             dim_of_domain = self.dim_of_domain,
-            same_weight = self.same_weight
+            same_weight = self.same_weight,
+            random_weight = self.random_weight
         )
 
 def freeze_parameters(model):
